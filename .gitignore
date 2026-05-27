@@ -1,0 +1,33 @@
+# Віртуальне середовище Python
+venv/
+ENV/
+env/
+.venv/
+
+# Кеш компілятора Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Специфічні файли середовища Debian/Linux
+.directory
+*~
+.DS_Store
+
+# Великі бінарні дані та датасети (Локальні копії)
+data/
+*.h5
+*.hdf5
+*.tiff
+*.tif
+*.npz
+*.npy
+
+# Чекпойнти та натреновані ваги моделей
+checkpoints/
+models/pretrained/
+*.pth
+*.pt
+*.pkl
