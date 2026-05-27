@@ -1,6 +1,5 @@
 import torch
 from torch.utils.data import Dataset
-# Додаємо імпорт DownloadConfig
 from datasets import load_dataset, DownloadConfig
 import numpy as np
 

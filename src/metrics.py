@@ -3,32 +3,29 @@ import numpy as np
 from sklearn.metrics import jaccard_score, f1_score
 
 class SegmentationMetrics:
-    """
-    Модуль розрахунку метрик mIoU та F1-score для валідації моделі U-KAN.
-    Адаптований для фільтрації нерозмічених геопросторових пікселів.
-    """
     def __init__(self, num_classes: int = 8):
         self.num_classes = num_classes
 
     @torch.no_grad()
     def compute_batch_metrics(self, outputs: torch.Tensor, targets: torch.Tensor) -> dict:
-        """
-        Розрахунок метрик для одного батчу із маскуванням фону.
-        """
-        # Визначення індексів прогнозованих класів за допомогою Argmax
         preds = torch.argmax(outputs, dim=1)
         
         preds_flat = preds.cpu().numpy().flatten()
         targets_flat = targets.cpu().numpy().flatten()
         
-        # Ізоляція та видалення невалідних геопросторових міток (індекс 255)
         valid_indices = targets_flat < self.num_classes
         preds_flat = preds_flat[valid_indices]
         targets_flat = targets_flat[valid_indices]
         
+        # Блокування розрахунку для повністю нерозмічених патчів
+        if len(targets_flat) == 0:
+            return {
+                "mIoU": float('nan'),
+                "F1_Macro": float('nan')
+            }
+        
         labels = np.arange(self.num_classes)
         
-        # Обчислення метрик на валідному підмножестві пікселів
         m_iou = jaccard_score(
             targets_flat, 
             preds_flat, 
