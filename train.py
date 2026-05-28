@@ -12,8 +12,8 @@ from src.ukan_model import UKAN
 from src.metrics import SegmentationMetrics
 
 def train_pipeline():
-    MICRO_BATCH_SIZE = 1
-    ACCUMULATION_STEPS = 16
+    MICRO_BATCH_SIZE = 8
+    ACCUMULATION_STEPS = 2
     EPOCHS = 6
     LEARNING_RATE = 1e-3
     L1_LAMBDA = 1e-4
