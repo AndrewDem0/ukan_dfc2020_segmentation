@@ -23,7 +23,7 @@ def get_dfc2020_cmap():
     ]
     return ListedColormap(colors)
 
-def visualize_inference(checkpoint_path="checkpoints/best_smoke_model.pth", num_samples=3):
+def visualize_inference(checkpoint_path="checkpoints/best_ukan_model_1.pth", num_samples=3):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Ініціалізація інференсу на {device}...")
 
@@ -95,4 +95,4 @@ def visualize_inference(checkpoint_path="checkpoints/best_smoke_model.pth", num_
     plt.show()
 
 if __name__ == "__main__":
-    visualize_inference(checkpoint_path="checkpoints/best_smoke_model.pth")
+    visualize_inference(checkpoint_path="checkpoints/best_ukan_model_1.pth")
