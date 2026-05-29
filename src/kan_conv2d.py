@@ -40,8 +40,9 @@ class KANLinear(nn.Module):
         bases = ((x >= self.grid[:-1]) & (x < self.grid[1:])).to(x.dtype)
         
         for k in range(1, self.spline_order + 1):
-            left_term = (x - self.grid[:-k - 1]) / (self.grid[k:-1] - self.grid[:-k - 1] + 1e-8) * bases[..., :-1]
-            right_term = (self.grid[k + 1:] - x) / (self.grid[k + 1:] - self.grid[1:-k] + 1e-8) * bases[..., 1:]
+                        # Замінити 1e-8 на 1e-4
+            left_term = (x - self.grid[:-k - 1]) / (self.grid[k:-1] - self.grid[:-k - 1] + 1e-4) * bases[..., :-1]
+            right_term = (self.grid[k + 1:] - x) / (self.grid[k + 1:] - self.grid[1:-k] + 1e-4) * bases[..., 1:]
             bases = left_term + right_term
             
         return bases

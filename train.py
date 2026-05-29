@@ -1,6 +1,10 @@
 import os
 import math
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+# Примусове налаштування середовища Windows для диска E:
+os.environ["HF_HOME"] = r"E:\.hf_cache"
+os.environ["HF_DATASETS_CACHE"] = r"E:\.hf_cache\datasets"
+os.environ["HF_DATASETS_DISABLE_FILE_LOCKING"] = "1"
 
 import torch
 import torch.nn as nn
@@ -12,23 +16,73 @@ from src.ukan_model import UKAN
 from src.metrics import SegmentationMetrics
 
 def train_pipeline():
-    MICRO_BATCH_SIZE = 8
-    ACCUMULATION_STEPS = 2
+    # Гіперпараметри адаптовано під ліміти 6 ГБ VRAM
+    MICRO_BATCH_SIZE = 2
+    ACCUMULATION_STEPS = 8
     EPOCHS = 6
-    LEARNING_RATE = 1e-3
+    LEARNING_RATE = 1e-4
     L1_LAMBDA = 1e-4
     NUM_CLASSES = 8
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    train_dataset = DFC2020Dataset(split="train")
-    val_dataset = DFC2020Dataset(split="val")
+    # Апаратне прискорення CUDA
+    if device.type == 'cuda':
+        torch.backends.cudnn.benchmark = True
     
-    train_loader = DataLoader(train_dataset, batch_size=MICRO_BATCH_SIZE, shuffle=True, num_workers=2, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=MICRO_BATCH_SIZE, shuffle=False, num_workers=2)
+    print(f"Ініціалізація завантаження датасетів (Пристрій: {device})...")
+    full_train_dataset = DFC2020Dataset(split="train")
+    full_val_dataset = DFC2020Dataset(split="val")
+    
+    # ---------------------------------------------------------
+    # МОДУЛЬ СТАТИСТИЧНОЇ РЕДУКЦІЇ ДАТАСЕТУ (25%)
+    # ---------------------------------------------------------
+    generator = torch.Generator().manual_seed(42)
+    
+    # Розрахунок розмірів для Train (25% / 75%)
+    train_total = len(full_train_dataset)
+    train_25 = int(train_total * 0.25)
+    train_75 = train_total - train_25
+    
+    train_subset, _ = torch.utils.data.random_split(
+        full_train_dataset, 
+        [train_25, train_75], 
+        generator=generator
+    )
+    
+    # Розрахунок розмірів для Val (25% / 75%)
+    val_total = len(full_val_dataset)
+    val_25 = int(val_total * 0.25)
+    val_75 = val_total - val_25
+    
+    val_subset, _ = torch.utils.data.random_split(
+        full_val_dataset, 
+        [val_25, val_75], 
+        generator=generator
+    )
+    # ---------------------------------------------------------
+    
+    print(f"Редукована конфігурація: Train: {len(train_subset)} зразків | Val: {len(val_subset)} зразків")
+    
+    # КРИТИЧНО ДЛЯ WINDOWS: num_workers=0
+    train_loader = DataLoader(
+        train_subset, 
+        batch_size=MICRO_BATCH_SIZE, 
+        shuffle=True, 
+        num_workers=0, 
+        drop_last=True
+    )
+    val_loader = DataLoader(
+        val_subset, 
+        batch_size=MICRO_BATCH_SIZE, 
+        shuffle=False, 
+        num_workers=0
+    )
     
     model = UKAN(in_channels=15, num_classes=NUM_CLASSES).to(device)
-    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)
+    
+    # Оптимізація пам'яті: fused=True
+    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2, fused=True)
     
     criterion = nn.CrossEntropyLoss(ignore_index=255)
     metrics_calc = SegmentationMetrics(num_classes=NUM_CLASSES)
@@ -65,6 +119,10 @@ def train_pipeline():
             scaler.scale(total_loss).backward()
             
             if (batch_idx + 1) % ACCUMULATION_STEPS == 0 or (batch_idx + 1) == len(train_loader):
+                # АНТИ-NaN ЗАХИСТ (Кліппінг градієнтів)
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
@@ -81,7 +139,7 @@ def train_pipeline():
         val_loss = 0.0
         total_miou = 0.0
         total_f1 = 0.0
-        valid_batches = 0  # Ізоляція порожніх батчів
+        valid_batches = 0
         
         with torch.no_grad():
             for images, masks in val_loader:
@@ -95,7 +153,6 @@ def train_pipeline():
                 val_loss += loss.item()
                 batch_metrics = metrics_calc.compute_batch_metrics(outputs, masks)
                 
-                # Фільтрація NaN перед додаванням
                 if not math.isnan(batch_metrics["mIoU"]):
                     total_miou += batch_metrics["mIoU"]
                     total_f1 += batch_metrics["F1_Macro"]
@@ -104,7 +161,6 @@ def train_pipeline():
         avg_train_loss = train_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
         
-        # Захист від Division By Zero
         avg_val_miou = (total_miou / valid_batches) if valid_batches > 0 else 0.0
         avg_val_f1 = (total_f1 / valid_batches) if valid_batches > 0 else 0.0
         

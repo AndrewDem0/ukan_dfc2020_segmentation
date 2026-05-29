@@ -10,15 +10,19 @@ except ImportError:
 class UKANBlock(nn.Module):
     """
     Базовий обчислювальний блок архітектури U-KAN.
+    Оптимізовано для екстремально малих батчів (Micro-Batching).
     """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         # Примусове зниження роздільної здатності сплайнової сітки для економії VRAM
         self.kan = KANConv2d(in_channels, out_channels, kernel_size=3, padding=1, grid_size=3)
-        self.bn = nn.BatchNorm2d(out_channels)
+        
+        # ЗАМІНА BATCHNORM НА GROUPNORM ДЛЯ БАТЧУ = 1
+        # 8 груп є оптимальним значенням для поточних розмірностей (32, 64, 128, 256)
+        self.norm = nn.GroupNorm(num_groups=8, num_channels=out_channels)
 
     def forward(self, x):
-        return self.bn(self.kan(x))
+        return self.norm(self.kan(x))
 
 class UKAN(nn.Module):
     """
