@@ -1,0 +1,2 @@
+epoch,train_loss,val_loss,val_miou,val_f1
+1,1.3009,0.7593,0.1523,0.1665
