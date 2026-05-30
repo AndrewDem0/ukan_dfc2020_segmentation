@@ -25,9 +25,3 @@ data/
 *.npz
 *.npy
 
-# Чекпойнти та натреновані ваги моделей
-checkpoints/
-models/pretrained/
-*.pth
-*.pt
-*.pkl
