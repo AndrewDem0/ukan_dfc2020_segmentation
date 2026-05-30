@@ -9,47 +9,62 @@ except ImportError:
 
 class UKANBlock(nn.Module):
     """
-    Базовий обчислювальний блок архітектури U-KAN.
+    Базовий обчислювальний блок архітектури U-KAN з підтримкою поліморфної нормалізації.
     """
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, norm_type='batch'):
         super().__init__()
+        self.norm_type = norm_type
+        
         # Примусове зниження роздільної здатності сплайнової сітки для економії VRAM
         self.kan = KANConv2d(in_channels, out_channels, kernel_size=3, padding=1, grid_size=3)
-        self.bn = nn.BatchNorm2d(out_channels)
+        
+        # Динамічна ініціалізація шару нормалізації
+        if self.norm_type == 'batch':
+            self.bn = nn.BatchNorm2d(out_channels)
+        elif self.norm_type == 'group':
+            # Забезпечення кратності груп (усі out_channels у графі кратні 8 або 32)
+            num_groups = 8 if out_channels % 8 == 0 else 1
+            self.norm = nn.GroupNorm(num_groups, out_channels)
+        else:
+            raise ValueError(f"Непідтримуваний тип нормалізації: {norm_type}")
 
     def forward(self, x):
-        return self.bn(self.kan(x))
+        x = self.kan(x)
+        if self.norm_type == 'batch':
+            return self.bn(x)
+        elif self.norm_type == 'group':
+            return self.norm(x)
 
 class UKAN(nn.Module):
     """
     Повна архітектура U-KAN для семантичної сегментації мультимодальних геоданих.
     """
-    def __init__(self, in_channels=15, num_classes=8):
+    def __init__(self, in_channels=15, num_classes=8, norm_type='batch'):
         super().__init__()
         
         # Енкодер (Зниження просторової розмірності, збільшення глибини ознак)
-        self.enc1 = UKANBlock(in_channels, 32)
-        self.enc2 = UKANBlock(32, 64)
-        self.enc3 = UKANBlock(64, 128)
+        self.enc1 = UKANBlock(in_channels, 32, norm_type=norm_type)
+        self.enc2 = UKANBlock(32, 64, norm_type=norm_type)
+        self.enc3 = UKANBlock(64, 128, norm_type=norm_type)
         
         # Оператор субдискретизації
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
         # Ботлнек (Найглибший рівень абстракції)
-        self.bottleneck = UKANBlock(128, 256)
+        self.bottleneck = UKANBlock(128, 256, norm_type=norm_type)
         
         # Декодер (Відновлення розмірності за допомогою транспонованих згорток)
         self.upconv3 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
         # Вхідний канал = 128 (з upconv) + 128 (з skip connection enc3) = 256
-        self.dec3 = UKANBlock(256, 128)
+        self.dec3 = UKANBlock(256, 128, norm_type=norm_type)
         
         self.upconv2 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         # Вхідний канал = 64 (з upconv) + 64 (з enc2) = 128
-        self.dec2 = UKANBlock(128, 64)
+        self.dec2 = UKANBlock(128, 64, norm_type=norm_type)
         
         self.upconv1 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
         # Вхідний канал = 32 (з upconv) + 32 (з enc1) = 64
-        self.dec1 = UKANBlock(64, 32)
+        self.dec1 = UKANBlock(64, 32, norm_type=norm_type)
         
         # Фінальний класифікатор (Лінійна проекція у простір 8 класів IGBP)
         # Використання класичної згортки 1x1 є стандартом для мінімізації FLOPs на виході
@@ -87,16 +102,22 @@ class UKAN(nn.Module):
 
 # Валідаційний блок
 if __name__ == "__main__":
-    print("Ініціалізація графа U-KAN...")
-    model = UKAN(in_channels=15, num_classes=8)
+    print("Ініціалізація графа U-KAN (BatchNorm)...")
+    model_bn = UKAN(in_channels=15, num_classes=8, norm_type='batch')
+    
+    print("Ініціалізація графа U-KAN (GroupNorm)...")
+    model_gn = UKAN(in_channels=15, num_classes=8, norm_type='group')
     
     # Симуляція нормалізованого батчу DFC2020
     dummy_input = torch.randn(2, 15, 96, 96)
     
     print(f"Форма вхідного тензора: {dummy_input.shape}")
-    output = model(dummy_input)
-    print(f"Форма тензора передбачень (логітів): {output.shape}")
+    output_bn = model_bn(dummy_input)
+    output_gn = model_gn(dummy_input)
+    
+    print(f"Форма тензора передбачень (BatchNorm): {output_bn.shape}")
+    print(f"Форма тензора передбачень (GroupNorm): {output_gn.shape}")
     
     # Розрахунок загальної кількості параметрів
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Загальна кількість навчальних параметрів моделі: {total_params:,}")
+    total_params_bn = sum(p.numel() for p in model_bn.parameters() if p.requires_grad)
+    print(f"Кількість навчальних параметрів: {total_params_bn:,}")

@@ -78,10 +78,11 @@ def get_dfc2020_cmap():
     ]
     return ListedColormap(colors)
 
-def visualize_inference(checkpoint_path="checkpoints/best_ukan_model.pth", num_samples=3, return_fig=True):
+def visualize_inference(checkpoint_path="checkpoints/best_ukan_model.pth", num_samples=3, norm_type="batch", return_fig=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    model = UKAN(in_channels=15, num_classes=8).to(device)
+    # ПЕРЕДАЧА ПАРАМЕТРА В АРХІТЕКТУРУ (Динамічна нормалізація)
+    model = UKAN(in_channels=15, num_classes=8, norm_type=norm_type).to(device)
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Файл ваг {checkpoint_path} не знайдено.")
         
@@ -126,7 +127,7 @@ def visualize_inference(checkpoint_path="checkpoints/best_ukan_model.pth", num_s
             axes[i][1].axis('off')
 
             axes[i][2].imshow(pred_mask, cmap=cmap, vmin=0, vmax=8, interpolation='nearest')
-            axes[i][2].set_title("Прогноз U-KAN")
+            axes[i][2].set_title(f"Прогноз U-KAN ({norm_type})")
             axes[i][2].axis('off')
 
     plt.tight_layout()

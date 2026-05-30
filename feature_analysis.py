@@ -3,13 +3,14 @@ import torch
 import matplotlib.pyplot as plt
 from src.ukan_model import UKAN
 
-def analyze_channel_importance(checkpoint_path="checkpoints/best_ukan_model.pth", return_fig=True):
+def analyze_channel_importance(checkpoint_path="checkpoints/best_ukan_model.pth", norm_type="batch", return_fig=True):
     device = torch.device("cpu")
     in_channels = 15
     num_classes = 8
     kernel_size = 3 
     
-    model = UKAN(in_channels=in_channels, num_classes=num_classes).to(device)
+    # ПЕРЕДАЧА ПАРАМЕТРА В АРХІТЕКТУРУ
+    model = UKAN(in_channels=in_channels, num_classes=num_classes, norm_type=norm_type).to(device)
     
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Чекпойнт {checkpoint_path} відсутній.")
